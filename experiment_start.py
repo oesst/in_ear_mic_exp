@@ -203,6 +203,28 @@ def main():
         print(Back.RED + 'Make sure that left and right headphones are place correctly.' + Style.RESET_ALL)
         input()
         clear_screen()
+
+        ###### Test correct working of headphones ######
+        print(Back.RED + 'Testing headphones!' + Style.RESET_ALL)
+        ###### Play recorded sound ######
+        file_name = 'userid_' + str(user_id) + '_speakerNum_' + str(5) + '_soundType_white.wav'
+        file_to_play = recording_data_path / file_name
+        # Extract data and sampling rate from file
+        data, fs = sf.read(file_to_play, dtype='int16')
+        sd.play(data, fs)
+
+        print(Back.RED + 'Ask participant if sound from headphones can be heard well (y) or (n)?' + Style.RESET_ALL)
+        hear_well = input()
+
+        if hear_well == 'y':
+            print(Back.GREEN + 'Very Well...' + Style.RESET_ALL)
+        else:
+            print(Back.RED + 'Aborting the experiment....' + Style.RESET_ALL)
+            print(Back.RED + 'Redo the recording procedure!' + Style.RESET_ALL)
+            exit()
+
+        clear_screen()
+
         print(Back.RED + '###### Experiment is starting NOW ######' + Style.RESET_ALL)
         print(Back.RED + '########################################' + Style.RESET_ALL)
         print(Back.RED + '########################################' + Style.RESET_ALL)
