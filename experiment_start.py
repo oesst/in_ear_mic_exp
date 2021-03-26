@@ -30,8 +30,8 @@ N_TRIALS = 100
 RECORDING_DURATION_OFFSET = 0.100
 
 # Just for testing
-dummy_audio_player = False
-dummy_arduino_reader = False
+dummy_audio_player = True
+dummy_arduino_reader = True
 
 # ARDUINO_PORT = '/dev/ttyUSB0' # Linux
 ARDUINO_PORT = 'COM3'  # Windows
@@ -193,7 +193,8 @@ def main():
         arduino_reader.get_data()
 
         # Start the recording process
-        recording_data_path = record_sounds(N_SPEAKERS, audio_player=audio_player, results_path=results_path, user_id=user_id)
+        # recording_data_path = record_sounds(N_SPEAKERS, audio_player=audio_player, results_path=results_path, user_id=user_id)
+        recording_data_path = recording_data_path = results_path / ('participant_' + user_id)
 
         clear_screen()
         print(Back.GREEN + 'Recording successful!' + Style.RESET_ALL)
@@ -210,7 +211,7 @@ def main():
         file_name = 'userid_' + str(user_id) + '_speakerNum_' + str(5) + '_soundType_white.wav'
         file_to_play = recording_data_path / file_name
         # Extract data and sampling rate from file
-        data, fs = sf.read(file_to_play, dtype='int16')
+        data, fs = sf.read(file_to_play.as_posix(), dtype='int16')
         sd.play(data, fs)
 
         print(Back.RED + 'Ask participant if sound from headphones can be heard well (y) or (n)?' + Style.RESET_ALL)
@@ -230,73 +231,71 @@ def main():
         print(Back.RED + '########################################' + Style.RESET_ALL)
         print(Back.RED + '----------------------------------------' + Style.RESET_ALL)
 
-        # walk over all conditions
-        for i_cond, cond in enumerate(conditions):
+        print(Fore.GREEN + 'Participant starts experiment by pressing the button \n' + Style.RESET_ALL)
+        # wait for button press of participant
+        arduino_reader.get_data()
+
+        # create tupels of all speakers with all sound types 10 speakers * 2 sounds * conditions = 20 tuples
+        stimulus_sequence = [(i, j, k) for i in np.arange(N_SPEAKERS) for j in np.arange(2) for k in conditions]
+        # We need to walk over this sequence to ensure that we tested all speakers, conditions and sounds
+        random_sequence = create_rand_balanced_order(n_items=N_SPEAKERS * 2 * 2, n_trials=N_TRIALS*2)
+        print(stimulus_sequence)
+        print(random_sequence)
+        print(len(random_sequence))
+        # walk over random sequence
+        for i_trial, i_tuple in enumerate(random_sequence):
+            # decode the stimulus sequence
+            num_speaker = stimulus_sequence[i_tuple][0]
+            sound_type = stimulus_sequence[i_tuple][1]
+            cond = stimulus_sequence[i_tuple][2]
+            if sound_type == 1:
+                sound_type_name = 'rippled'
+            else:
+                sound_type_name = 'white'
 
             print(Fore.GREEN + 'The following condition is tested: ' + cond + '\n' + Style.RESET_ALL)
 
-            print(Fore.GREEN + 'Participant starts experiment by pressing the button \n' + Style.RESET_ALL)
-            # wait for button press of participant
-            arduino_reader.get_data()
+            ###### Play recorded sound here ######
+            file_name = 'userid_' + str(user_id) + '_speakerNum_' + str(num_speaker) + '_soundType_' + sound_type_name + '.wav'
+            file_to_play = recording_data_path / file_name
 
-            # create tupels of all speakers with all sound types 10 speakers * 2 sounds = 20 tuples
-            stimulus_sequence = [(i, j) for i in np.arange(N_SPEAKERS) for j in np.arange(2)]
-            # We need to walk over this sequence to ensure that we tested all speakers and sounds
-            random_sequence = create_rand_balanced_order(n_items=N_SPEAKERS * 2, n_trials=N_TRIALS)
+            # Extract data and sampling rate from file
+            data, fs = sf.read(file_to_play.as_posix(), dtype='int16')
 
-            # walk over random sequence
-            for i_trial, i_tuple in enumerate(random_sequence):
+            # remove one side in mono condition
+            if cond == 'mono':
+                # left channel is 0, right channel is 1
+                data[:, dominant_ear] = 0
 
-                # decode the stimulus sequence
-                num_speaker = stimulus_sequence[i_tuple][0]
-                sound_type = stimulus_sequence[i_tuple][1]
-                if sound_type == 1:
-                    sound_type_name = 'rippled'
-                else:
-                    sound_type_name = 'white'
+            sd.play(data, fs)
 
-                ###### Play recorded sound here ######
-                file_name = 'userid_' + str(user_id) + '_speakerNum_' + str(num_speaker) + '_soundType_' + sound_type_name + '.wav'
-                file_to_play = recording_data_path / file_name
+            # start measuring the time
+            ts = datetime.now()
 
-                # Extract data and sampling rate from file
-                data, fs = sf.read(file_to_play, dtype='int16')
+            # get participant response
+            print('Waiting for participant response...')
+            user_estimate = arduino_reader.get_data()
 
-                # remove one side in mono condition
-                if cond == 'mono':
-                    # left channel is 0, right channel is 1
-                    data[:, dominant_ear] = 0
+            # calculate reaction time
+            reaction_time = (datetime.now() - ts).total_seconds()
 
-                sd.play(data, fs)
+            # create data entry and add it to file
+            result_item = [
+                i_trial,  # Trial
+                num_speaker,  # line number (speaker number)
+                user_estimate,  # perceived elevation in degree
+                sound_type_name,  # type of the sound
+                cond,  # condition
+                reaction_time,
+                user_id   # id of the user
+            ]
+            # write it to file
+            res_file_writer.writerow(result_item)
 
-                # start measuring the time
-                ts = datetime.now()
+            # wait some time until playing the next sound
+            time.sleep(0.5)
 
-                # get participant response
-                print('Waiting for participant response...')
-                user_estimate = arduino_reader.get_data()
-
-                # calculate reaction time
-                reaction_time = (datetime.now() - ts).total_seconds()
-
-                # create data entry and add it to file
-                result_item = [
-                    i_trial,  # Trial
-                    num_speaker,  # line number (speaker number)
-                    user_estimate,  # perceived elevation in degree
-                    sound_type_name,  # type of the sound
-                    cond,  # condition
-                    reaction_time,
-                    user_id   # id of the user
-                ]
-                # write it to file
-                res_file_writer.writerow(result_item)
-
-                # wait some time until playing the next sound
-                time.sleep(0.5)
-
-            print("First Condition is finished.")
-
+        print(Back.GREEN + 'Experiment has finished' + Style.RESET_ALL)
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(levelname)s - %(message)s'
